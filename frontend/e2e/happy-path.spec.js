@@ -22,7 +22,8 @@ test('upload → cart → extract → view → export → history', async ({ pag
   await page.getByRole('tab', { name: 'Extract Results' }).click()
   await expect(page.getByText('simple.pdf')).toBeVisible()
   await page.getByRole('button', { name: /Extract all/ }).click()
-  await expect(page.locator('[data-status="success"]')).toBeVisible({ timeout: 60_000 })
+  // Generous: the extraction child process loads docling's models first
+  await expect(page.locator('[data-status="success"]')).toBeVisible({ timeout: 180_000 })
   await expect(page.getByTestId('batch-progress')).toContainText('1/1')
 
   // ---- View the extracted table

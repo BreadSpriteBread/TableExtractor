@@ -9,7 +9,7 @@ class Table:
     spans_pages: bool
     rotated: bool
     nested: bool
-    extraction_method: str  # "vector" | "ocr"
+    extraction_method: str  # "docling_targeted" | "docling_full"
     confidence: float
     headers: list
     rows: list

@@ -13,7 +13,7 @@ def assert_table_schema(t):
     assert isinstance(t["spans_pages"], bool)
     assert isinstance(t["rotated"], bool)
     assert isinstance(t["nested"], bool)
-    assert t["extraction_method"] in ("vector", "ocr")
+    assert t["extraction_method"] in ("docling_targeted", "docling_full")
     assert isinstance(t["confidence"], (int, float)) and 0 <= t["confidence"] <= 1
     assert isinstance(t["headers"], list)
     assert isinstance(t["rows"], list) and all(isinstance(r, list) for r in t["rows"])

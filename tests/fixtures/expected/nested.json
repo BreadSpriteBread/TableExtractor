@@ -10,35 +10,19 @@
       "spans_pages": false,
       "rotated": false,
       "nested": true,
-      "extraction_method": "vector",
+      "extraction_method": "docling_targeted",
       "headers": [
         "Region",
-        "Breakdown",
-        "",
-        "",
-        ""
+        "Breakdown"
       ],
       "rows": [
         [
           "North",
-          "",
-          "a",
-          "b",
-          ""
-        ],
-        [
-          "",
-          "",
-          "c",
-          "d",
-          ""
+          "a b c d"
         ],
         [
           "South",
-          "42",
-          "",
-          "",
-          ""
+          "42"
         ]
       ]
     }

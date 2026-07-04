@@ -9,15 +9,20 @@ exports them as JSON.
 ## Stack
 
 - **Backend** — Python / Flask (port 5000), SQLite (`data.db`, FTS5 for search)
-- **Extraction** — swappable engine (`backend/extraction/`): pdfplumber vector
-  extraction first, PyMuPDF + tesseract OCR fallback for scanned pages
+- **Extraction** — swappable engine (`backend/extraction/`): pdfplumber prescan
+  flags pages holding table-like regions (presence only, cells never trusted),
+  then Docling (layout + TableFormer, easyocr for scanned pages) extracts the
+  tables. Each table records which path it took: `docling_targeted`
+  (prescan-flagged page) vs `docling_full` (page with no text layer, scanned
+  blind)
 - **Frontend** — React + Vite + MUI (port 5173), 4 tabs + cart drawer
 - **Scraper** — patchright/Playwright (live), stubbed in CI via `SCRAPER_STUB=1`
 
 ## Dev setup
 
 ```bash
-# Backend (Python 3.10+). For OCR also: sudo apt-get install tesseract-ocr
+# Backend (Python 3.10+). Docling + easyocr models download automatically
+# on first extraction (~/.cache/docling, ~/.EasyOCR)
 pip install -r requirements.txt
 python3 -m backend.app                      # http://localhost:5000
 
@@ -57,10 +62,14 @@ session, and is visible from every tab (badge + drawer in the app bar).
 - **Identity/caching** — a document is the SHA-256 of its bytes; same file under
   any name hits the cache. Results are cached until deleted; "Re-extract"
   (`force`) overwrites the single latest result.
-- **Scope** — text PDFs, scanned (OCR), rotated pages, landscape, borderless
-  tables (text-alignment strategy), multi-page tables (merged, contributing
+- **Scope** — text PDFs, scanned (OCR via Docling/easyocr), rotated pages,
+  landscape, borderless tables, multi-page tables (merged, contributing
   pages listed, `spans_pages`), nested tables (flattened + `nested` flag).
-- **Failure handling** — per document, never aborts the batch: 120 s timeout,
+- **Audit trail** — `extraction_method` per table: `docling_targeted` when the
+  pdfplumber prescan flagged the page, `docling_full` when Docling scanned an
+  image-only page blind. A prescan flag with no Docling table is reported in
+  `errors`.
+- **Failure handling** — per document, never aborts the batch: 300 s timeout,
   one auto-retry on crash (each doc runs in a killable child process), failed
   docs cached with error details. Statuses: `success` / `partial` / `failed`.
 - **Bulk jobs** — bounded pool (4 workers), results stream to SQLite per doc,
@@ -76,9 +85,9 @@ cd frontend && npx playwright test       # E2E happy path (boots both servers)
 
 Fixture PDFs are generated deterministically (`python3 -m tests.fixtures.generate_fixtures`)
 and asserted against hand-verified JSON in `tests/fixtures/expected/`.
-CI (`.github/workflows/ci.yml`) runs all three suites on every PR; OCR tests
-run for real there (tesseract installed). Live scraping is never exercised in
-CI — manual smoke test only.
+CI (`.github/workflows/ci.yml`) runs all three suites on every PR; Docling and
+OCR run for real there (model caches persisted via actions/cache). Live
+scraping is never exercised in CI — manual smoke test only.
 
 ## Corpus file naming
 

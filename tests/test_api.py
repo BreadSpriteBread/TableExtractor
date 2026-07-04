@@ -155,7 +155,7 @@ def test_cancel_job(client, monkeypatch):
 
     resp = client.post(f"/api/jobs/{job_id}/cancel")
     assert resp.status_code == 200
-    snap = wait_for_job(client, job_id, timeout=60)
+    snap = wait_for_job(client, job_id, timeout=300)
     assert snap["state"] == "cancelled"
     statuses = {d["status"] for d in snap["documents"]}
     assert "cancelled" in statuses

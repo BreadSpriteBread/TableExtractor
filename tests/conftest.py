@@ -38,7 +38,9 @@ def db_path(tmp_path, monkeypatch):
 
 @pytest.fixture
 def manager(db_path):
-    m = JobManager(db_path=str(db_path), workers=2, timeout_s=60)
+    # Generous timeout: each extraction child process loads docling's
+    # layout/TableFormer models (~15-30s) before converting anything.
+    m = JobManager(db_path=str(db_path), workers=2, timeout_s=180)
     jobs.set_manager(m)
     yield m
     jobs.set_manager(None)
@@ -54,7 +56,7 @@ def client(db_path, manager, tmp_path, monkeypatch):
     return app.test_client()
 
 
-def wait_for_job(client, job_id, timeout=90):
+def wait_for_job(client, job_id, timeout=300):
     """Poll the job endpoint until it reaches a terminal state."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

@@ -10,7 +10,7 @@
       "spans_pages": false,
       "rotated": false,
       "nested": false,
-      "extraction_method": "vector",
+      "extraction_method": "docling_targeted",
       "headers": [
         "Item",
         "Q1",

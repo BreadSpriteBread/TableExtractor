@@ -1,12 +1,13 @@
 """Extraction engine tests against hand-verified fixture PDFs.
 
-Vector fixtures are compared exactly; OCR fixtures fuzzily (word recall).
+Text-layer fixtures are compared exactly; the scanned (OCR) fixture fuzzily
+(word recall).
 """
 import json
 
 import pytest
 
-from backend.extraction import extract, ocr
+from backend.extraction import docling_engine, extract
 from tests.conftest import EXPECTED_DIR, FIXTURE_PDFS
 from tests.schema import assert_result_schema
 
@@ -43,8 +44,8 @@ def assert_exact_table(expected_t, actual_t):
 @pytest.mark.parametrize("name", FIXTURES)
 def test_fixture(name):
     expected = load_expected(name)
-    if name == "scanned" and not ocr.ocr_available():
-        pytest.skip("tesseract not installed (OCR path covered by mocked test)")
+    if name == "scanned" and not docling_engine.ocr_enabled():
+        pytest.skip("docling OCR engine unavailable (scanned path covered by mocked test)")
 
     result = extract(pdf_for(name)).to_dict()
     assert_result_schema(result)
@@ -82,42 +83,80 @@ def test_multipage_merge_details():
     assert ["Month", "Sales", "Cost"] not in t["rows"]
 
 
-def test_ocr_fallback_invoked_for_scanned_pdf(monkeypatch):
-    """Pages without a text layer must route to the OCR engine."""
+def test_scanned_page_routes_to_docling_full(monkeypatch):
+    """Pages without a text layer are blind to the prescan and must be sent
+    to docling as an untargeted full scan -> extraction_method docling_full."""
     calls = []
 
-    def fake_ocr_page(pdf_path, page_index):
-        calls.append(page_index)
-        return ([["Item", "Q1"], ["Revenue", "1000"]], 0.88)
+    def fake_extract_pages(pdf_path, pages):
+        calls.append(sorted(pages))
+        pt = docling_engine.PageTable(
+            page_number=1, grid=[["Item", "Q1"], ["Revenue", "1000"]],
+            bbox=(10, 10, 200, 100), page_height=792.0)
+        return [pt], {1: 0.88}, []
 
-    monkeypatch.setattr(ocr, "ocr_available", lambda: True)
-    monkeypatch.setattr(ocr, "ocr_page", fake_ocr_page)
+    monkeypatch.setattr(docling_engine, "ocr_enabled", lambda: True)
+    monkeypatch.setattr(docling_engine, "extract_pages", fake_extract_pages)
 
     result = extract(pdf_for("scanned")).to_dict()
-    assert calls == [0], "OCR should be called exactly once for the single scanned page"
+    assert calls == [[1]], "docling should get exactly the single blind page"
     assert result["status"] == "success"
     assert len(result["tables"]) == 1
     t = result["tables"][0]
-    assert t["extraction_method"] == "ocr"
+    assert t["extraction_method"] == "docling_full"
     assert t["confidence"] == 0.88
     assert t["headers"] == ["Item", "Q1"]
     assert t["rows"] == [["Revenue", "1000"]]
 
 
-def test_vector_pdf_does_not_use_ocr(monkeypatch):
-    monkeypatch.setattr(ocr, "ocr_page",
-                        lambda *a: (_ for _ in ()).throw(AssertionError("OCR called")))
+def test_flagged_page_routes_to_docling_targeted(monkeypatch):
+    """Pages where the prescan sees a table region are extracted by docling
+    with extraction_method docling_targeted."""
+    calls = []
+
+    def fake_extract_pages(pdf_path, pages):
+        calls.append(sorted(pages))
+        pt = docling_engine.PageTable(
+            page_number=1, grid=[["Item", "Q1"], ["Revenue", "1000"]],
+            bbox=(10, 10, 200, 100), page_height=792.0)
+        return [pt], {1: 0.95}, []
+
+    monkeypatch.setattr(docling_engine, "extract_pages", fake_extract_pages)
+
     result = extract(pdf_for("simple")).to_dict()
+    assert calls == [[1]], "docling should get exactly the flagged page"
     assert result["status"] == "success"
-    assert all(t["extraction_method"] == "vector" for t in result["tables"])
+    assert result["tables"][0]["extraction_method"] == "docling_targeted"
 
 
-@pytest.mark.skipif(not ocr.ocr_available(), reason="tesseract not installed")
+def test_no_table_pages_never_reach_docling(monkeypatch):
+    """A prose-only text page is neither flagged nor blind, so docling
+    (the expensive stage) must not run at all."""
+    monkeypatch.setattr(
+        docling_engine, "extract_pages",
+        lambda *a: (_ for _ in ()).throw(AssertionError("docling called")))
+    result = extract(pdf_for("no_tables")).to_dict()
+    assert result["status"] == "success"
+    assert result["tables"] == []
+
+
+def test_prescan_flag_without_docling_table_is_reported(monkeypatch):
+    """If the prescan flags a region but docling extracts nothing there, the
+    mismatch is auditable via errors and a partial/failed status."""
+    monkeypatch.setattr(docling_engine, "extract_pages",
+                        lambda pdf_path, pages: ([], {}, []))
+    result = extract(pdf_for("simple")).to_dict()
+    assert result["status"] == "failed"  # errors and no tables
+    assert any("prescan flagged" in e for e in result["errors"])
+
+
 def test_real_ocr_on_scanned_fixture():
+    if not docling_engine.ocr_enabled():
+        pytest.skip("docling OCR engine unavailable")
     result = extract(pdf_for("scanned")).to_dict()
     assert result["status"] == "success"
-    assert result["tables"], "real OCR should find the table"
-    assert result["tables"][0]["extraction_method"] == "ocr"
+    assert result["tables"], "docling OCR should find the table"
+    assert result["tables"][0]["extraction_method"] == "docling_full"
 
 
 def test_engine_is_swappable():

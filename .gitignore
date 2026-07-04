@@ -21,3 +21,6 @@ tests/fixtures/pdfs/
 
 # WSL artifacts
 *:Zone.Identifier
+
+# Personal notes
+notes.md

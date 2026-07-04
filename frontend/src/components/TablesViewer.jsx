@@ -10,7 +10,7 @@ function TableMeta({ t }) {
   return (
     <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap' }}>
       <Chip size="small" label={`pages ${t.pages.join(', ')}`} />
-      <Chip size="small" label={t.extraction_method} color={t.extraction_method === 'ocr' ? 'warning' : 'default'} />
+      <Chip size="small" label={t.extraction_method} color={t.extraction_method === 'docling_full' ? 'warning' : 'default'} />
       <Chip size="small" label={`confidence ${(t.confidence * 100).toFixed(0)}%`} />
       {t.spans_pages && <Chip size="small" color="info" label="multi-page" />}
       {t.rotated && <Chip size="small" color="info" label="rotated" />}

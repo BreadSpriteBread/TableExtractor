@@ -11,7 +11,7 @@
       "spans_pages": true,
       "rotated": false,
       "nested": false,
-      "extraction_method": "vector",
+      "extraction_method": "docling_targeted",
       "headers": [
         "Month",
         "Sales",
