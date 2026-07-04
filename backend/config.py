@@ -14,8 +14,8 @@ METADATA_CSV = PDF_DIR / "download_metadata.csv"
 # Bulk extraction job settings
 EXTRACT_WORKERS = int(os.environ.get("EXTRACT_WORKERS", "4"))
 # Docling loads its layout/TableFormer models in each extraction child
-# process (~15-30s) before any page is converted, hence the generous default.
-EXTRACT_TIMEOUT_S = float(os.environ.get("EXTRACT_TIMEOUT_S", "300"))
+# No GPU acceleration avaliable. This process is taking 300+ seconds
+EXTRACT_TIMEOUT_S = float(os.environ.get("EXTRACT_TIMEOUT_S", "600"))
 EXTRACT_MAX_RETRIES = 1  # one automatic retry on crash
 
 # Scraper: set SCRAPER_STUB=1 (e.g. in CI) to avoid live Saudi Exchange traffic
