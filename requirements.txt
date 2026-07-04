@@ -1,0 +1,12 @@
+# Backend + test dependencies (Python 3.10+)
+flask>=2.0
+flask-cors>=3.0
+pdfplumber>=0.11
+PyMuPDF>=1.24
+pytesseract>=0.3.10
+reportlab>=4.0
+pypdf>=4.0
+pytest>=8.0
+
+# Live Saudi Exchange scraping only (not needed in CI — SCRAPER_STUB=1):
+# patchright

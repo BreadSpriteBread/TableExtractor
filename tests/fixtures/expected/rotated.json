@@ -1,0 +1,42 @@
+{
+  "status": "success",
+  "page_count": 1,
+  "match": "exact",
+  "tables": [
+    {
+      "pages": [
+        1
+      ],
+      "spans_pages": false,
+      "rotated": true,
+      "nested": false,
+      "extraction_method": "vector",
+      "headers": [
+        "Item",
+        "Q1",
+        "Q2",
+        "Total"
+      ],
+      "rows": [
+        [
+          "Revenue",
+          "1000",
+          "1200",
+          "2200"
+        ],
+        [
+          "Expenses",
+          "400",
+          "500",
+          "900"
+        ],
+        [
+          "Profit",
+          "600",
+          "700",
+          "1300"
+        ]
+      ]
+    }
+  ]
+}

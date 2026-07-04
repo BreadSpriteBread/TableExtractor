@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+
+# Data (regenerate with backend/database.py + scraper; corpus PDFs are large)
+data.db
+data.db-wal
+data.db-shm
+uploads/
+saudi_exchange_pdfs/
+
+# Generated fixture PDFs (rebuild: python3 -m tests.fixtures.generate_fixtures)
+tests/fixtures/pdfs/
+
+# WSL artifacts
+*:Zone.Identifier

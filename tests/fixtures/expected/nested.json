@@ -1,0 +1,46 @@
+{
+  "status": "success",
+  "page_count": 1,
+  "match": "exact",
+  "tables": [
+    {
+      "pages": [
+        1
+      ],
+      "spans_pages": false,
+      "rotated": false,
+      "nested": true,
+      "extraction_method": "vector",
+      "headers": [
+        "Region",
+        "Breakdown",
+        "",
+        "",
+        ""
+      ],
+      "rows": [
+        [
+          "North",
+          "",
+          "a",
+          "b",
+          ""
+        ],
+        [
+          "",
+          "",
+          "c",
+          "d",
+          ""
+        ],
+        [
+          "South",
+          "42",
+          "",
+          "",
+          ""
+        ]
+      ]
+    }
+  ]
+}
