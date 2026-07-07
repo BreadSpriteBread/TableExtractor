@@ -8,7 +8,7 @@ import {
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import CancelIcon from '@mui/icons-material/Cancel'
 import DownloadIcon from '@mui/icons-material/Download'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { downloadAsJSON, postJSON } from '../api'
 import { useCart } from '../cart/CartContext'
 import useJobPolling from '../hooks/useJobPolling'
@@ -17,16 +17,38 @@ import SourceChip from '../components/SourceChip'
 import StatusChip from '../components/StatusChip'
 
 const DONE = new Set(['success', 'partial', 'failed', 'cached'])
+const JOB_STORAGE_KEY = 'extraction-job-id'
+
+function loadJobId() {
+  try {
+    return sessionStorage.getItem(JOB_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
 
 export default function ExtractTab() {
   const cart = useCart()
   const [selected, setSelected] = useState(new Set())
   const [force, setForce] = useState(false)
-  const [jobId, setJobId] = useState(null)
+  // survives tab switches/reloads so an in-flight job's progress reappears
+  const [jobId, setJobId] = useState(loadJobId)
   const [submitError, setSubmitError] = useState('')
   const [viewDoc, setViewDoc] = useState(null)
   const [exporting, setExporting] = useState(false)
-  const { snapshot, error: pollError, isRunning } = useJobPolling(jobId)
+  const { snapshot, error: pollError, isRunning, notFound } = useJobPolling(jobId)
+
+  useEffect(() => {
+    try {
+      if (jobId) sessionStorage.setItem(JOB_STORAGE_KEY, jobId)
+      else sessionStorage.removeItem(JOB_STORAGE_KEY)
+    } catch { /* storage unavailable (private mode) — job id stays in memory */ }
+  }, [jobId])
+
+  // stored job unknown to the backend (e.g. server restarted) — forget it
+  useEffect(() => {
+    if (notFound) setJobId(null)
+  }, [notFound])
 
   // job state per document_id, layered over cart rows
   const docState = useMemo(() => {

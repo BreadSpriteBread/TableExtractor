@@ -7,7 +7,9 @@ async function handle(resp) {
       const body = await resp.json()
       if (body?.error) detail = body.error
     } catch { /* non-JSON error body */ }
-    throw new Error(detail)
+    const err = new Error(detail)
+    err.status = resp.status
+    throw err
   }
   return resp.json()
 }

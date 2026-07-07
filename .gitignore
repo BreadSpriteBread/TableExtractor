@@ -25,5 +25,5 @@ tests/fixtures/pdfs/
 # Personal notes
 notes.md
 
-# Configs
-.claude
+# Agent Configs
+.claude/

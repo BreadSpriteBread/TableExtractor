@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import useJobPolling from './useJobPolling'
 
 function Harness({ jobId }) {
-  const { snapshot, isRunning } = useJobPolling(jobId, 50)
+  const { snapshot, isRunning, notFound } = useJobPolling(jobId, 50)
+  if (notFound) return <div data-testid="state">not-found</div>
   if (!snapshot) return <div data-testid="state">loading</div>
   return (
     <div>
@@ -58,6 +59,20 @@ describe('useJobPolling', () => {
     const after = calls
     await act(async () => { await vi.advanceTimersByTimeAsync(500) })
     expect(calls).toBe(after) // no polling after terminal state
+  })
+
+  it('reports notFound on 404 and stops polling', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: false, status: 404, json: () => Promise.resolve({ error: 'job not found' }),
+    })))
+
+    render(<Harness jobId="stale" />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
+    expect(screen.getByTestId('state')).toHaveTextContent('not-found')
+
+    const calls = fetch.mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+    expect(fetch.mock.calls.length).toBe(calls)
   })
 
   it('does nothing without a job id', () => {

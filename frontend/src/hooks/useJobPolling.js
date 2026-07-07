@@ -7,11 +7,13 @@ export const TERMINAL_STATES = ['completed', 'cancelled']
 export default function useJobPolling(jobId, intervalMs = 1000) {
   const [snapshot, setSnapshot] = useState(null)
   const [error, setError] = useState('')
+  const [notFound, setNotFound] = useState(false)
   const timer = useRef(null)
 
   useEffect(() => {
     setSnapshot(null)
     setError('')
+    setNotFound(false)
     if (!jobId) return undefined
 
     let stopped = false
@@ -24,7 +26,9 @@ export default function useJobPolling(jobId, intervalMs = 1000) {
           timer.current = setTimeout(tick, intervalMs)
         }
       } catch (e) {
-        if (!stopped) setError(e.message)
+        if (stopped) return
+        if (e.status === 404) setNotFound(true)
+        else setError(e.message)
       }
     }
     tick()
@@ -34,5 +38,10 @@ export default function useJobPolling(jobId, intervalMs = 1000) {
     }
   }, [jobId, intervalMs])
 
-  return { snapshot, error, isRunning: !!snapshot && !TERMINAL_STATES.includes(snapshot.state) }
+  return {
+    snapshot,
+    error,
+    notFound,
+    isRunning: !!snapshot && !TERMINAL_STATES.includes(snapshot.state),
+  }
 }
