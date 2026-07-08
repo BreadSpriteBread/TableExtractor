@@ -1,0 +1,30 @@
+# Keep the build context small and stateless — nothing here belongs in the image.
+.git/
+.github/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend source is needed (built in a multi-stage node step); artifacts aren't.
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/
+
+# Local data, corpus and uploads are ephemeral at runtime (baked to /tmp).
+data.db
+data.db-wal
+data.db-shm
+uploads/
+saudi_exchange_pdfs/
+
+# Tests and fixtures aren't shipped in the runtime image.
+tests/
+
+# WSL / editor / notes cruft.
+*:Zone.Identifier
+notes.md

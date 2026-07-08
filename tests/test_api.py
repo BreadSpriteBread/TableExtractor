@@ -173,6 +173,21 @@ def test_scrape_stub(client):
     assert "stub" in status["message"]
 
 
+def test_scrape_companies_list(client):
+    resp = client.get("/api/scrape/companies")
+    assert resp.status_code == 200
+    companies = resp.get_json()["companies"]
+    assert companies, "expected companies from the profiles CSV"
+    row = companies[0]
+    assert {"code", "name", "sector", "folder", "scraped", "pdf_count"} <= row.keys()
+
+
+def test_scrape_rejects_non_list_codes(client):
+    resp = client.post("/api/scrape", json={"codes": "2030"})
+    assert resp.status_code == 400
+    assert "codes" in resp.get_json()["error"]
+
+
 def test_register_reports_as_documents(client, db_path):
     """Query Reports flow: corpus report ids become content-addressed documents."""
     from backend.config import BASE_DIR

@@ -7,6 +7,10 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent.parent
 
 DB_PATH = Path(os.environ.get("THESIS_DB_PATH", BASE_DIR / "data.db"))
+# Built frontend (vite build output). Served by Flask when present (prod
+# container); in dev the Vite dev server serves the UI and proxies /api.
+FRONTEND_DIST = Path(os.environ.get("THESIS_FRONTEND_DIST",
+                                    BASE_DIR / "frontend" / "dist"))
 PDF_DIR = Path(os.environ.get("THESIS_PDF_DIR", BASE_DIR / "saudi_exchange_pdfs"))
 UPLOAD_DIR = Path(os.environ.get("THESIS_UPLOAD_DIR", BASE_DIR / "uploads"))
 METADATA_CSV = PDF_DIR / "download_metadata.csv"

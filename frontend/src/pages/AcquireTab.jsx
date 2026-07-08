@@ -1,7 +1,8 @@
 // Acquire documents: upload PDFs, or trigger the Saudi Exchange scraper.
 import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  LinearProgress, List, ListItem, ListItemText, Typography,
+  Alert, Box, Button, Card, CardContent, Checkbox, Chip, CircularProgress,
+  Divider, LinearProgress, List, ListItem, ListItemButton, ListItemIcon,
+  ListItemText, Stack, TextField, Typography,
 } from '@mui/material'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload'
@@ -19,16 +20,55 @@ export default function AcquireTab() {
   const [uploadErrors, setUploadErrors] = useState([])
   const [scrapeStatus, setScrapeStatus] = useState(null)
   const [scrapeBusy, setScrapeBusy] = useState(false)
+  const [companies, setCompanies] = useState([])
+  const [selected, setSelected] = useState(() => new Set())
+  const [filter, setFilter] = useState('')
+  const wasRunning = useRef(false)
+
+  const loadCompanies = async () => {
+    try {
+      const { companies } = await getJSON('/api/scrape/companies')
+      setCompanies(companies)
+    } catch { /* backend gone */ }
+  }
 
   const pollScrape = async () => {
     try {
       const status = await getJSON('/api/scrape/status')
       setScrapeStatus(status)
-      if (status.state === 'running') setTimeout(pollScrape, 1500)
+      if (status.state === 'running') {
+        wasRunning.current = true
+        setTimeout(pollScrape, 1500)
+      } else if (wasRunning.current) {
+        wasRunning.current = false
+        loadCompanies()  // refresh scraped markers when a run finishes
+      }
     } catch { /* backend gone; stop polling */ }
   }
 
-  useEffect(() => { pollScrape() }, [])  // show current state on mount
+  useEffect(() => { pollScrape(); loadCompanies() }, [])  // initial state
+
+  const visible = companies.filter((c) => {
+    const q = filter.trim().toLowerCase()
+    if (!q) return true
+    return c.code.toLowerCase().includes(q)
+      || c.name.toLowerCase().includes(q)
+      || (c.sector || '').toLowerCase().includes(q)
+  })
+
+  const toggle = (code) => setSelected((prev) => {
+    const next = new Set(prev)
+    next.has(code) ? next.delete(code) : next.add(code)
+    return next
+  })
+
+  const allVisibleSelected = visible.length > 0 && visible.every((c) => selected.has(c.code))
+  const toggleAllVisible = () => setSelected((prev) => {
+    const next = new Set(prev)
+    if (allVisibleSelected) visible.forEach((c) => next.delete(c.code))
+    else visible.forEach((c) => next.add(c.code))
+    return next
+  })
 
   const onFiles = async (fileList) => {
     const files = [...fileList]
@@ -52,9 +92,10 @@ export default function AcquireTab() {
   }
 
   const startScrape = async () => {
+    if (selected.size === 0) return
     setScrapeBusy(true)
     try {
-      await postJSON('/api/scrape', {})
+      await postJSON('/api/scrape', { codes: [...selected] })
     } catch { /* 409 = already running; status poll shows it */ }
     setScrapeBusy(false)
     pollScrape()
@@ -129,21 +170,76 @@ export default function AcquireTab() {
         </CardContent>
       </Card>
 
-      <Card variant="outlined" sx={{ flex: '1 1 420px' }}>
+      <Card variant="outlined" sx={{ flex: '1 1 480px' }}>
         <CardContent>
           <Typography variant="h6" sx={{ mb: 1 }}>Download from Saudi Exchange</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Scrapes financial reports for the top listed companies with a
-            headful browser. Runs in the background; new files appear under
-            Query Reports when it finishes.
+            Pick the companies to scrape financial reports for. Files land in
+            <code> saudi_exchange_pdfs/&lt;code&gt;_&lt;name&gt;</code> and appear under
+            Query Reports when the run finishes. Already-scraped companies are
+            marked but can be re-scraped.
           </Typography>
+
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Filter by code, name, or sector"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            sx={{ mb: 1 }}
+            inputProps={{ 'data-testid': 'company-filter' }}
+          />
+
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
+            <Button size="small" onClick={toggleAllVisible} disabled={visible.length === 0}>
+              {allVisibleSelected ? 'Clear' : 'Select'} shown ({visible.length})
+            </Button>
+            <Typography variant="caption" color="text.secondary">
+              {selected.size} selected
+            </Typography>
+          </Stack>
+
+          <Box sx={{ maxHeight: 320, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+            <List dense disablePadding>
+              {visible.map((c) => (
+                <ListItem key={c.code} disablePadding
+                  secondaryAction={c.scraped
+                    ? <Chip size="small" color="success" variant="outlined"
+                        label={`scraped · ${c.pdf_count}`} />
+                    : null}
+                >
+                  <ListItemButton onClick={() => toggle(c.code)} dense>
+                    <ListItemIcon sx={{ minWidth: 36 }}>
+                      <Checkbox edge="start" size="small" tabIndex={-1} disableRipple
+                        checked={selected.has(c.code)} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={`${c.code} — ${c.name}`}
+                      secondary={c.sector}
+                      primaryTypographyProps={{ fontSize: 14 }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+              {visible.length === 0 && (
+                <ListItem><ListItemText secondary="No companies match the filter." /></ListItem>
+              )}
+            </List>
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
           <Button
             variant="contained"
-            startIcon={<CloudDownloadIcon />}
-            disabled={scrapeBusy || scrapeStatus?.state === 'running'}
+            startIcon={scrapeStatus?.state === 'running'
+              ? <CircularProgress size={16} color="inherit" />
+              : <CloudDownloadIcon />}
+            disabled={scrapeBusy || scrapeStatus?.state === 'running' || selected.size === 0}
             onClick={startScrape}
           >
-            {scrapeStatus?.state === 'running' ? 'Scraping…' : 'Start scrape'}
+            {scrapeStatus?.state === 'running'
+              ? 'Scraping…'
+              : `Scrape ${selected.size || ''} selected`}
           </Button>
 
           {scrapeStatus?.state === 'running' && <LinearProgress sx={{ mt: 2 }} />}
