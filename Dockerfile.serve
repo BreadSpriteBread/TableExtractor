@@ -1,0 +1,81 @@
+# syntax=docker/dockerfile:1
+#
+# Saudi Exchange table-extraction — CPU-only SERVING image (Cloud Run service).
+#
+# This is the always-deployed, scale-to-zero web service: it serves the React
+# UI + JSON API and reads/writes the SQLite DB on the mounted GCS bucket. It is
+# deliberately CPU-only and CUDA-free so cold starts pull a ~2-3 GB image
+# instead of the ~8-10 GB GPU image.
+#
+# Extraction still works here as a CPU fallback (models are baked in), but the
+# fast path for bulk extraction is the separate GPU Cloud Run Job — see the
+# GPU-based `Dockerfile` and deploy/run_extraction_job.sh.
+#
+# Build & deploy: see deploy/deploy_service.sh (region asia-southeast1).
+
+# ── Stage 1: build the React frontend (served by Flask in prod) ──
+FROM node:22-slim AS frontend
+WORKDIR /fe
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# ── Stage 2: CPU-only API + models ──
+FROM python:3.10-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    # Deterministic, HOME-independent model caches (populated at build time).
+    HF_HOME=/opt/models/hf \
+    EASYOCR_MODULE_PATH=/opt/models/easyocr
+
+# libgl1 + libglib2.0-0 are the OpenCV runtime deps easyocr/docling pull in.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 libglib2.0-0 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV PYTHONPATH=/app
+
+# CPU-only torch first (from the PyTorch CPU index → no nvidia-*/triton wheels),
+# then the rest of the deps. Keeping these on separate layers means a deps
+# change doesn't re-pull the ~200 MB torch wheel.
+COPY requirements-cpu.txt .
+RUN python3 -m pip install --upgrade pip \
+    && python3 -m pip install \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.12.1 torchvision==0.27.1 \
+    && python3 -m pip install -r requirements-cpu.txt gunicorn
+
+# Application code and the built frontend (Flask serves it at /).
+COPY backend/ ./backend/
+COPY scripts/ ./scripts/
+COPY --from=frontend /fe/dist ./frontend/dist
+
+# Bake the Docling + easyocr weights so the CPU fallback path doesn't download
+# ~1 GB onto the instance on first extraction.
+RUN python3 -m scripts.prefetch_models
+
+# Stateless container config. THESIS_* paths point at the mounted GCS volume at
+# deploy time (see deploy/deploy_service.sh); the defaults below keep a bare
+# `docker run` from crashing. DELETE journal: WAL is unusable over GCSFuse.
+ENV PORT=8080 \
+    FLASK_DEBUG=0 \
+    SCRAPER_STUB=1 \
+    THESIS_SQLITE_JOURNAL=DELETE \
+    THESIS_DB_PATH=/data/data.db \
+    THESIS_UPLOAD_DIR=/data/uploads \
+    THESIS_PDF_DIR=/data/saudi_exchange_pdfs \
+    EXTRACT_WORKERS=2
+
+EXPOSE 8080
+
+# Single worker (in-process job state) + a thread pool for concurrent polls.
+CMD exec gunicorn \
+    --workers 1 --threads 8 --timeout 120 \
+    --bind "0.0.0.0:${PORT}" \
+    --access-logfile - --error-logfile - \
+    "backend.app:create_app()"

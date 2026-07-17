@@ -11,7 +11,8 @@ import re
 import sqlite3
 from pathlib import Path
 
-from backend.config import BASE_DIR, DB_PATH, METADATA_CSV, get_logger
+from backend.config import (BASE_DIR, DB_PATH, METADATA_CSV, SQLITE_JOURNAL,
+                            get_logger)
 
 log = get_logger(__name__)
 
@@ -19,7 +20,9 @@ log = get_logger(__name__)
 def get_db(db_path=None):
     conn = sqlite3.connect(db_path or DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    # journal_mode is an identifier, not a bindable param; SQLITE_JOURNAL is
+    # validated against an allowlist in config, so interpolation is safe.
+    conn.execute(f"PRAGMA journal_mode={SQLITE_JOURNAL}")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=10000")
     return conn

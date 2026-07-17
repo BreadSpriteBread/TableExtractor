@@ -1,0 +1,31 @@
+# Build-context excludes for `gcloud builds submit`. Without this file gcloud
+# falls back to .gitignore; we keep it explicit so image builds never upload the
+# 1.6 GB corpus, the venv, or node_modules. Corpus PDFs live in the GCS bucket,
+# not the image.
+.git/
+.github/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/
+
+# Runtime/local data — served from the mounted bucket, never baked in.
+data.db
+data.db-wal
+data.db-shm
+uploads/
+saudi_exchange_pdfs/
+graphify-out/
+
+tests/
+notes.md
+*:Zone.Identifier
+.claude/

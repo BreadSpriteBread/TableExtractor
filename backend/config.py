@@ -15,6 +15,15 @@ PDF_DIR = Path(os.environ.get("THESIS_PDF_DIR", BASE_DIR / "saudi_exchange_pdfs"
 UPLOAD_DIR = Path(os.environ.get("THESIS_UPLOAD_DIR", BASE_DIR / "uploads"))
 METADATA_CSV = PDF_DIR / "download_metadata.csv"
 
+# SQLite journal mode. WAL is best for local disk (concurrent readers), but it
+# needs shared-memory mmap that GCSFuse can't provide — so when the DB lives on
+# a mounted GCS bucket (single writer, enforced by Cloud Run max-instances=1)
+# set THESIS_SQLITE_JOURNAL=DELETE. Restricted to a safe allowlist.
+_JOURNAL_MODES = {"WAL", "DELETE", "TRUNCATE", "PERSIST", "MEMORY", "OFF"}
+SQLITE_JOURNAL = os.environ.get("THESIS_SQLITE_JOURNAL", "WAL").upper()
+if SQLITE_JOURNAL not in _JOURNAL_MODES:
+    SQLITE_JOURNAL = "WAL"
+
 # Bulk extraction job settings
 EXTRACT_WORKERS = int(os.environ.get("EXTRACT_WORKERS", "4"))
 # Docling loads its layout/TableFormer models in each extraction child
