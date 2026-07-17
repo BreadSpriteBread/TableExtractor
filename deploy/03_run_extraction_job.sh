@@ -12,8 +12,10 @@ source deploy/config.sh
 EXTRACT_ARGS=("$@")
 
 echo ">> Building GPU extraction image with Cloud Build → $GPU_IMAGE"
-# Reuses the CUDA-based Dockerfile (the app's original GPU image).
-gcloud builds submit --tag "$GPU_IMAGE" \
+# Reuses the CUDA-based Dockerfile (the app's original GPU image). Inline config
+# (not --tag) so the -f Dockerfile and the image tag/push live together; --tag and
+# --config can't be combined.
+gcloud builds submit \
     --project "$PROJECT_ID" \
     --config /dev/stdin <<EOF
 steps:

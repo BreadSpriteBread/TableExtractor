@@ -6,8 +6,11 @@ cd "$(dirname "$0")/.."
 source deploy/config.sh
 
 echo ">> Building CPU serving image with Cloud Build → $SERVE_IMAGE"
-# -f selects the CPU Dockerfile; .gcloudignore keeps the corpus out of the context.
-gcloud builds submit --tag "$SERVE_IMAGE" \
+# Inline config so we can select the CPU Dockerfile with -f (a plain --tag build
+# only ever uses ./Dockerfile). --tag and --config are mutually exclusive, so the
+# image tag/push is declared inside the config via `images:`. .gcloudignore keeps
+# the corpus out of the build context.
+gcloud builds submit \
     --project "$PROJECT_ID" \
     --config /dev/stdin <<EOF
 steps:
