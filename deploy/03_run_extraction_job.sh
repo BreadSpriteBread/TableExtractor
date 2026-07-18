@@ -44,8 +44,8 @@ gcloud run jobs deploy "$EXTRACT_JOB" \
     --add-volume=name=data,type=cloud-storage,bucket="$BUCKET" \
     --add-volume-mount=volume=data,mount-path=/data \
     --set-env-vars="$DATA_ENV,EXTRACT_WORKERS=2" \
-    --command python3 \
-    --args "$JOB_ARGS"
+    --command=python3 \
+    --args="$JOB_ARGS"
 
 echo ">> Executing the job now (blocking until it finishes)…"
 gcloud run jobs execute "$EXTRACT_JOB" \

@@ -88,6 +88,25 @@ buffer. The budget risk is operational, not usage — see guardrails.
 - **GPU image (`Dockerfile`)** — unchanged; used only by the job, which
   overrides the entrypoint to `python3 -m backend.batch_extract`.
 
+## Troubleshooting
+
+**`sqlite3.OperationalError: disk I/O error` at `setup()` / `init_db()`** — the
+runtime service account can't write the bucket. GCSFuse mounts read-only-capable
+by default and surfaces the underlying `403 storage.objects.create denied` as an
+I/O error. `01_setup_bucket.sh` now grants `roles/storage.objectAdmin` to the
+default compute SA; if you skipped it or use a custom SA:
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+gcloud storage buckets add-iam-policy-binding "gs://${PROJECT_ID}-thesis-data" \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role=roles/storage.objectAdmin
+```
+
+Then re-run without rebuilding: `gcloud run jobs execute thesis-extract --region asia-southeast1 --wait`.
+`objectAdmin` (not just `objectViewer`) is required because SQLite's DELETE
+journal creates *and deletes* `data.db-journal` on every commit.
+
 ## Known caveat
 
 `seed_from_csv()` marks a corpus report `downloaded=1` only if its PDF exists at
