@@ -9,6 +9,9 @@ and the expensive GPU only bills while it's actually extracting.
 | **Extraction job** (`thesis-extract`) | L4 GPU batch over the corpus, on demand | Per-second, scales to zero when done |
 | **Data bucket** (`gs://…-thesis-data`) | Persistent SQLite DB + corpus PDFs + uploads | ~**$0.03/mo** for 1.6 GB |
 
+Scraping is **not** a cloud workload — it runs on your desktop and the results
+are pushed up (see [Scraping new reports](#scraping-new-reports-local-then-sync)).
+
 Why the split: extraction is GPU-heavy and bursty; serving is light and must be
 responsive. Running them separately means the L4 is never sitting idle on the
 clock — that's the one thing that can blow the $350/90-day budget (a warm L4 is
@@ -36,6 +39,40 @@ The service URL is printed at the end of step 2. After step 3 the extracted
 tables appear in the UI immediately — the job and the service share the one
 SQLite DB on the bucket.
 
+## Scraping new reports (local, then sync)
+
+**Scraping never runs in the cloud.** `services/scraper.py` drives a *headed*,
+stealth-patched Chromium (patchright, spoofed `navigator` fields, randomised
+delays) because Saudi Exchange challenges automated clients — headless Chromium
+from a datacenter egress IP gets blocked outright. Cloud Run also throttles CPU
+for background threads outside a request and would kill a scrape at the 300s
+request timeout. So both cloud images keep `SCRAPER_STUB=1` permanently.
+
+Two steps, from your desktop:
+
+```bash
+python3 -m backend.batch_scrape 5      # 1. scrape 5 companies (opens a browser)
+deploy/04_sync_corpus.sh               # 2. push PDFs + CSV to the bucket
+```
+
+The argument is how many rows to take from
+`backend/saudi_exchange_company_profiles.csv` (260 rows); omit it to scrape all
+of them. Start small — a full run is hours of deliberate rate-limiting.
+
+`04_sync_corpus.sh` rsyncs the corpus up (additive — it never deletes) and then
+POSTs `/api/scrape` on the running service. With `SCRAPER_STUB=1` that endpoint
+does exactly one thing: re-seed the corpus tables from `download_metadata.csv`.
+So new reports appear in **Query Reports** without a redeploy. Follow with
+`deploy/03_run_extraction_job.sh` to extract them.
+
+> **`data.db` is deliberately not synced.** The bucket's copy holds every
+> extraction the GPU job has produced; pushing your local DB would clobber it.
+> New reports reach the deployed DB through the CSV re-seed, which only touches
+> the corpus tables.
+
+If the browser shows a challenge or consent page and nothing downloads, the
+session was flagged — retry later or from a different network.
+
 ## Cost model (real numbers)
 
 Cloud Run rates (us-central1 tier; Singapore is close): CPU **$0.0864/vCPU-hr**,
@@ -46,6 +83,8 @@ memory **$0.009/GiB-hr**, L4 GPU **$0.672/GPU-hr** (no zonal redundancy).
 - **One full corpus extraction (437 PDFs) on the L4:** ~5 hrs, **~$6**. Even a
   handful of full re-runs is well under $50.
 - **Bucket storage:** 1.6 GB ≈ **$0.03/mo**.
+- **Scraping:** **$0** — it runs on your machine; only the resulting upload
+  (egress-free, ingress is free) touches GCP.
 - **Demo/defense week** with the service warmed (`--min-instances 1`, 2 vCPU/4
   GiB): ~$16 for the week.
 
@@ -87,6 +126,9 @@ buffer. The budget risk is operational, not usage — see guardrails.
   → much faster cold starts. Extraction still works here on CPU as a fallback.
 - **GPU image (`Dockerfile`)** — unchanged; used only by the job, which
   overrides the entrypoint to `python3 -m backend.batch_extract`.
+- **No scraper image at all** — Chromium (~400 MB) would slow the cold start
+  every visitor pays, to run a browser that Saudi Exchange blocks from cloud IPs
+  anyway. Scraping stays local; `04_sync_corpus.sh` carries the result up.
 
 ## Troubleshooting
 
@@ -107,13 +149,21 @@ Then re-run without rebuilding: `gcloud run jobs execute thesis-extract --region
 `objectAdmin` (not just `objectViewer`) is required because SQLite's DELETE
 journal creates *and deletes* `data.db-journal` on every commit.
 
-## Known caveat
+## Resolved: corpus paths vs. the bucket mount
 
-`seed_from_csv()` marks a corpus report `downloaded=1` only if its PDF exists at
-`BASE_DIR/local_path` (i.e. `/app/saudi_exchange_pdfs/…`), but in the container
-the PDFs live on the bucket at `/data/saudi_exchange_pdfs/…`. So the **Query
-Reports** tab may show reports as not-downloaded even though extraction works
-(the job walks `THESIS_PDF_DIR` directly and is unaffected). If that tab needs to
-reflect the bucket, resolve the existence check against `PDF_DIR` rather than
-`BASE_DIR/local_path`. Left as a follow-up to avoid changing corpus semantics
-here.
+*(Was a known caveat; fixed.)* Corpus reports store `local_path` as
+`saudi_exchange_pdfs/<company>/<file>.pdf`. Resolving that against `BASE_DIR`
+gives `/app/saudi_exchange_pdfs/…`, but in the container the PDFs are on the
+bucket at `/data/saudi_exchange_pdfs/…`. Locally the two coincide, so this only
+ever broke in prod — the **Query Reports** cart failed with
+*"0 document(s) added to cart; 1 failed (PDF missing on disk)"*.
+
+All corpus lookups now go through `config.resolve_corpus_path()`, which strips
+the corpus-dir prefix and joins to `PDF_DIR`, so paths resolve wherever the
+bucket is mounted. Call sites: `routes/documents.py` (cart registration),
+`routes/reports.py` (PDF serving), `database.py` (`seed_from_csv` downloaded
+flag), `services/scraper.py` (metadata CSV writes — corpus-relative, so a
+locally-scraped CSV resolves correctly once synced to the bucket).
+
+The `corpus_dir` test fixture mounts the corpus **outside** `BASE_DIR` to keep
+this class of bug visible in CI, where it previously passed.

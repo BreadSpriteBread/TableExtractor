@@ -26,6 +26,11 @@ BUCKET="${BUCKET:-${PROJECT_ID}-thesis-data}"
 
 # Env vars pointing the app at the mounted bucket. DELETE journal because WAL is
 # unusable over GCSFuse. Shared by the service and the job.
+#
+# SCRAPER_STUB=1 is intentional and permanent for everything that runs in the
+# cloud: neither image ships patchright/Chromium, and Saudi Exchange challenges
+# headless browsers on datacenter IPs anyway. Scraping is a local workflow
+# (backend/batch_scrape.py) whose output is pushed up by 04_sync_corpus.sh.
 DATA_ENV="THESIS_DB_PATH=/data/data.db,THESIS_UPLOAD_DIR=/data/uploads,THESIS_PDF_DIR=/data/saudi_exchange_pdfs,THESIS_SQLITE_JOURNAL=DELETE,SCRAPER_STUB=1"
 
 export PROJECT_ID REGION REPO SERVE_IMAGE GPU_IMAGE SERVE_SERVICE EXTRACT_JOB BUCKET DATA_ENV
