@@ -97,6 +97,47 @@ def test_sha256_identity(tmp_path):
     assert sha256_file(f1).startswith("sha256:")
 
 
+def test_resolve_corpus_path_is_independent_of_base_dir(monkeypatch, tmp_path):
+    """Corpus paths must resolve against PDF_DIR, not BASE_DIR.
+
+    Regression: prod mounts the bucket at /data while code lives at /app, so
+    joining a stored local_path to BASE_DIR yielded a nonexistent file and the
+    cart reported "PDF missing on disk" for every corpus report.
+    """
+    import backend.config as config
+
+    mount = tmp_path / "data" / "saudi_exchange_pdfs"
+    monkeypatch.setattr(config, "PDF_DIR", mount)
+
+    # Stored form used by download_metadata.csv (corpus-dir-prefixed)…
+    assert config.resolve_corpus_path("saudi_exchange_pdfs/2030_SARCO/r.pdf") == \
+        mount / "2030_SARCO" / "r.pdf"
+    # …and the bare corpus-relative form, which must not be double-prefixed.
+    assert config.resolve_corpus_path("2030_SARCO/r.pdf") == \
+        mount / "2030_SARCO" / "r.pdf"
+
+
+def test_scraper_writes_mount_independent_metadata_paths(monkeypatch, tmp_path):
+    """local_path in the metadata CSV must round-trip through resolve_corpus_path.
+
+    Regression: the scraper stored `local_path.relative_to(BASE_DIR)`, which
+    raises ValueError once PDF_DIR is a bucket mount outside BASE_DIR.
+    """
+    from pathlib import Path
+
+    import backend.config as config
+
+    mount = tmp_path / "data" / "saudi_exchange_pdfs"
+    monkeypatch.setattr(config, "PDF_DIR", mount)
+
+    # Mirrors the expression in scraper._scrape_live.
+    written = mount / "2030_SARCO" / "r.pdf"
+    stored = str(Path(mount.name) / written.relative_to(mount))
+
+    assert stored == "saudi_exchange_pdfs/2030_SARCO/r.pdf"
+    assert config.resolve_corpus_path(stored) == written
+
+
 def test_extraction_upsert_is_latest_only(db_path):
     conn = get_db(db_path)
     _insert_document(conn)

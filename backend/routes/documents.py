@@ -5,7 +5,7 @@ import datetime
 from flask import Blueprint, jsonify, request
 from werkzeug.utils import secure_filename
 
-from backend.config import BASE_DIR, UPLOAD_DIR, get_logger
+from backend.config import UPLOAD_DIR, get_logger, resolve_corpus_path
 from backend.database import get_db, sha256_bytes, sha256_file
 
 bp = Blueprint("documents", __name__)
@@ -61,7 +61,7 @@ def register_documents():
             if not row:
                 results.append({"report_id": rid, "error": "report not found or not downloaded"})
                 continue
-            abs_path = BASE_DIR / row["local_path"]
+            abs_path = resolve_corpus_path(row["local_path"])
             if not abs_path.is_file():
                 results.append({"report_id": rid, "error": "PDF missing on disk"})
                 continue

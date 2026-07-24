@@ -11,8 +11,8 @@ import re
 import sqlite3
 from pathlib import Path
 
-from backend.config import (BASE_DIR, DB_PATH, METADATA_CSV, SQLITE_JOURNAL,
-                            get_logger)
+from backend.config import (DB_PATH, METADATA_CSV, SQLITE_JOURNAL, get_logger,
+                            resolve_corpus_path)
 
 log = get_logger(__name__)
 
@@ -149,12 +149,16 @@ def seed_from_csv():
             local_path = row["local_path"]
             filename = Path(local_path).name
             downloaded = row["downloaded"].strip().lower() == "true"
-            exists_on_disk = os.path.isfile(str(BASE_DIR / local_path))
+            exists_on_disk = os.path.isfile(str(resolve_corpus_path(local_path)))
+            # Upsert the downloaded flag: on redeploy the corpus mount (bucket)
+            # may differ from when the row was first seeded, so re-evaluate it
+            # against current disk state instead of leaving a stale value.
             conn.execute(
                 """
-                INSERT OR IGNORE INTO reports
+                INSERT INTO reports
                     (company_code, company_name, pdf_url, local_path, filename, published_date, downloaded)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(local_path) DO UPDATE SET downloaded = excluded.downloaded
                 """,
                 (
                     row["company_code"],

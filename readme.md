@@ -16,7 +16,10 @@ exports them as JSON.
   (prescan-flagged page) vs `docling_full` (page with no text layer, scanned
   blind)
 - **Frontend** — React + Vite + MUI (port 5173), 4 tabs + cart drawer
-- **Scraper** — patchright/Playwright (live), stubbed in CI via `SCRAPER_STUB=1`
+- **Scraper** — patchright/Playwright, headed and **local-only** (Saudi Exchange
+  blocks headless browsers on datacenter IPs); stubbed via `SCRAPER_STUB=1` in CI
+  and in the cloud. Run `python3 -m backend.batch_scrape [rows]`, then push the
+  results with `deploy/04_sync_corpus.sh`
 
 ## Dev setup
 

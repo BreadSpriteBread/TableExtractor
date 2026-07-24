@@ -1,5 +1,6 @@
 """API tests: async batch submit, polling, search, export, delete."""
 import json
+import shutil
 import time
 
 from tests.conftest import FIXTURE_PDFS, upload_pdf, wait_for_job
@@ -170,7 +171,73 @@ def test_scrape_stub(client):
             break
         time.sleep(0.1)
     assert status["state"] == "done"
-    assert "stub" in status["message"]
+    # The message must state what actually happened (a CSV re-sync, no network)
+    # and where real scraping lives — a bare "stub mode" read as a broken deploy.
+    assert "re-synced corpus" in status["message"]
+    assert "no live scrape" in status["message"]
+
+
+def _patch_scrape_live(monkeypatch, db_path):
+    """Run batch_scrape's real logic with the browser swapped out.
+
+    Records the `limit` that reaches _scrape_live so the row-count argument can
+    be asserted without launching Chromium.
+    """
+    import backend.batch_scrape as batch_scrape
+    import backend.services.scraper as scraper_svc
+
+    seen = {}
+
+    async def fake_scrape_live(codes=None, limit=None):
+        seen["limit"] = limit
+        return (3, 0)
+
+    monkeypatch.setattr(scraper_svc, "_scrape_live", fake_scrape_live)
+    monkeypatch.setattr(batch_scrape, "SCRAPER_STUB", False)
+    monkeypatch.setattr(batch_scrape, "setup", lambda: None)
+    return batch_scrape, seen
+
+
+def test_batch_scrape_row_count_argument(monkeypatch, db_path):
+    """The optional positional arg caps how many profile CSV rows are scraped."""
+    batch_scrape, seen = _patch_scrape_live(monkeypatch, db_path)
+
+    assert batch_scrape.main(["5"]) == 0
+    assert seen["limit"] == 5
+
+
+def test_batch_scrape_defaults_to_all_rows(monkeypatch, db_path):
+    """No argument means the whole profiles CSV (limit=None slices everything)."""
+    batch_scrape, seen = _patch_scrape_live(monkeypatch, db_path)
+
+    assert batch_scrape.main([]) == 0
+    assert seen["limit"] is None
+
+
+def test_batch_scrape_clamps_oversized_row_count(monkeypatch, db_path):
+    """Asking for more rows than the CSV has scrapes all of them, not an error."""
+    from backend.services.scraper import _read_profiles
+    batch_scrape, seen = _patch_scrape_live(monkeypatch, db_path)
+
+    total = len(_read_profiles())
+    assert batch_scrape.main([str(total + 500)]) == 0
+    assert seen["limit"] == total
+
+
+def test_batch_scrape_rejects_nonsense_row_count(monkeypatch, db_path):
+    """A zero/negative count is a usage error, not a silent full scrape."""
+    batch_scrape, seen = _patch_scrape_live(monkeypatch, db_path)
+
+    assert batch_scrape.main(["0"]) == 2
+    assert seen == {}  # never reached the browser
+
+
+def test_batch_scrape_refuses_stub_mode(monkeypatch, db_path):
+    """Guard against the stub silently 'succeeding' with a CSV re-sync."""
+    import backend.batch_scrape as batch_scrape
+    monkeypatch.setattr(batch_scrape, "SCRAPER_STUB", True)
+
+    assert batch_scrape.main(["5"]) == 2
 
 
 def test_scrape_companies_list(client):
@@ -188,12 +255,18 @@ def test_scrape_rejects_non_list_codes(client):
     assert "codes" in resp.get_json()["error"]
 
 
-def test_register_reports_as_documents(client, db_path):
-    """Query Reports flow: corpus report ids become content-addressed documents."""
-    from backend.config import BASE_DIR
+def test_register_reports_as_documents(client, db_path, corpus_dir):
+    """Query Reports flow: corpus report ids become content-addressed documents.
+
+    ``corpus_dir`` mounts the corpus OUTSIDE BASE_DIR, the way Cloud Run does
+    (bucket at /data, code at /app), so report paths must resolve via PDF_DIR
+    rather than BASE_DIR.
+    """
     from backend.database import get_db
 
-    rel = "tests/fixtures/pdfs/simple.pdf"
+    shutil.copy(FIXTURE_PDFS / "simple.pdf", corpus_dir / "9999_TestCo" / "simple.pdf")
+    # Stored exactly as the metadata CSV writes it: corpus-dir-prefixed.
+    rel = f"{corpus_dir.name}/9999_TestCo/simple.pdf"
     conn = get_db(db_path)
     conn.execute("INSERT INTO companies (company_code, company_name) VALUES ('9999', 'TestCo')")
     conn.execute(
@@ -202,7 +275,6 @@ def test_register_reports_as_documents(client, db_path):
     rid = conn.execute("SELECT id FROM reports").fetchone()["id"]
     conn.commit()
     conn.close()
-    assert (BASE_DIR / rel).is_file()
 
     resp = client.post("/api/documents/register", json={"report_ids": [rid, 999999]})
     assert resp.status_code == 200

@@ -56,6 +56,23 @@ def client(db_path, manager, tmp_path, monkeypatch):
     return app.test_client()
 
 
+@pytest.fixture
+def corpus_dir(tmp_path, monkeypatch):
+    """Corpus mounted outside BASE_DIR, mirroring the Cloud Run bucket layout.
+
+    Prod mounts the GCS bucket at /data while the code lives at /app, so any
+    code that resolves a report's ``local_path`` against BASE_DIR silently
+    works locally and 404s in prod. Pointing PDF_DIR somewhere unrelated to
+    BASE_DIR keeps that class of bug visible in CI.
+    """
+    import backend.config as config
+
+    root = tmp_path / "saudi_exchange_pdfs"
+    (root / "9999_TestCo").mkdir(parents=True)
+    monkeypatch.setattr(config, "PDF_DIR", root)
+    return root
+
+
 def wait_for_job(client, job_id, timeout=300):
     """Poll the job endpoint until it reaches a terminal state."""
     deadline = time.monotonic() + timeout

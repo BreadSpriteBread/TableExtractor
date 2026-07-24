@@ -1,7 +1,7 @@
 """Corpus browsing endpoints: list reports, serve PDFs, stats."""
 from flask import Blueprint, abort, jsonify, request, send_file
 
-from backend.config import BASE_DIR
+from backend.config import resolve_corpus_path
 from backend.database import get_db
 
 bp = Blueprint("reports", __name__)
@@ -58,7 +58,7 @@ def serve_pdf(report_id):
 
     if not row:
         abort(404)
-    abs_path = BASE_DIR / row["local_path"]
+    abs_path = resolve_corpus_path(row["local_path"])
     if not abs_path.is_file():
         abort(404)
     return send_file(abs_path, mimetype="application/pdf", download_name=row["filename"])

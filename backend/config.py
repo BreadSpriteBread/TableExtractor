@@ -15,6 +15,22 @@ PDF_DIR = Path(os.environ.get("THESIS_PDF_DIR", BASE_DIR / "saudi_exchange_pdfs"
 UPLOAD_DIR = Path(os.environ.get("THESIS_UPLOAD_DIR", BASE_DIR / "uploads"))
 METADATA_CSV = PDF_DIR / "download_metadata.csv"
 
+
+def resolve_corpus_path(local_path) -> Path:
+    """Resolve a report's stored ``local_path`` to an absolute path under PDF_DIR.
+
+    The CSV/DB stores repo-relative paths prefixed with the corpus dir name,
+    e.g. ``saudi_exchange_pdfs/2030_SARCO/foo.pdf``. Locally PDF_DIR lives under
+    BASE_DIR so joining to BASE_DIR happens to work, but on Cloud Run the corpus
+    is on the mounted bucket (THESIS_PDF_DIR=/data/saudi_exchange_pdfs) and NOT
+    under BASE_DIR (/app). Strip the leading corpus-dir prefix and join to
+    PDF_DIR so paths resolve wherever the bucket is mounted.
+    """
+    p = Path(local_path)
+    if p.parts and p.parts[0] == PDF_DIR.name:
+        p = Path(*p.parts[1:])
+    return PDF_DIR / p
+
 # SQLite journal mode. WAL is best for local disk (concurrent readers), but it
 # needs shared-memory mmap that GCSFuse can't provide — so when the DB lives on
 # a mounted GCS bucket (single writer, enforced by Cloud Run max-instances=1)
@@ -31,7 +47,9 @@ EXTRACT_WORKERS = int(os.environ.get("EXTRACT_WORKERS", "4"))
 EXTRACT_TIMEOUT_S = float(os.environ.get("EXTRACT_TIMEOUT_S", "600"))
 EXTRACT_MAX_RETRIES = 1  # one automatic retry on crash
 
-# Scraper: set SCRAPER_STUB=1 (e.g. in CI) to avoid live Saudi Exchange traffic
+# Scraper: set SCRAPER_STUB=1 (e.g. in CI, and in the deployed service) to avoid
+# live Saudi Exchange traffic. Live scraping is a local-only workflow — see
+# backend/batch_scrape.py.
 SCRAPER_STUB = os.environ.get("SCRAPER_STUB", "0") == "1"
 
 _LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"

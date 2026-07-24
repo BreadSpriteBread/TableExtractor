@@ -95,9 +95,18 @@ def start_scrape_in_background(codes=None, limit=20):
 
 
 def _stub_scrape():
-    """CI/dev stub: no network, just re-seed the corpus from the metadata CSV."""
-    log.info("scraper stub: re-seeding corpus from metadata CSV")
-    _set_status(message="stub mode: re-synced corpus from metadata CSV")
+    """CI/dev stub: no network, just re-seed the corpus from the metadata CSV.
+
+    Also the production path, and the useful one there: after a local scrape is
+    pushed up with deploy/04_sync_corpus.sh, this is what makes the new reports
+    appear in the deployed UI without a redeploy. The message says so explicitly
+    rather than the bare "stub mode", which read like a broken deployment.
+    """
+    log.info("scraper stub: re-seeding corpus from metadata CSV (no network)")
+    _set_status(message="no live scrape here — re-synced corpus from metadata CSV. "
+                        "Saudi Exchange blocks datacenter IPs, so scraping runs "
+                        "locally (python3 -m backend.batch_scrape N) and is pushed "
+                        "up with deploy/04_sync_corpus.sh.")
     seed_from_csv()
 
 
@@ -137,6 +146,9 @@ async def _create_browser():
 
     p = await async_playwright().start()
     browser = await p.chromium.launch(
+        # Headed on purpose, and why scraping is local-only: Saudi Exchange's
+        # anti-bot checks flag headless Chromium, and a datacenter egress IP on
+        # top of that gets challenged outright. Run this from a desktop.
         headless=False,
         args=[
             "--disable-blink-features=AutomationControlled",
@@ -266,7 +278,13 @@ async def _scrape_live(codes=None, limit=20):
                         "company_code": code,
                         "company_name": name,
                         "pdf_url": pdf_url,
-                        "local_path": str(local_path.relative_to(BASE_DIR)),
+                        # Corpus-relative, prefixed with the corpus dir name to
+                        # match existing CSV rows. NOT relative to BASE_DIR:
+                        # on Cloud Run the corpus is on the mounted bucket
+                        # (/data/saudi_exchange_pdfs), which is not under
+                        # BASE_DIR (/app), so relative_to(BASE_DIR) raises.
+                        # resolve_corpus_path() reads these back.
+                        "local_path": str(Path(PDF_DIR.name) / local_path.relative_to(root)),
                         "downloaded": ok,
                     })
             except Exception as e:
@@ -280,6 +298,7 @@ async def _scrape_live(codes=None, limit=20):
 
     seed_from_csv()  # sync new files into the corpus tables
     _set_status(downloaded=downloaded, failed=failed)
+    return downloaded, failed
 
 
 if __name__ == "__main__":
