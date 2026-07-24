@@ -6,6 +6,7 @@ from backend.database import setup
 from backend.routes.companies import bp as companies_bp
 from backend.routes.documents import bp as documents_bp
 from backend.routes.extraction_api import bp as extraction_bp
+from backend.routes.financials_api import bp as financials_bp
 from backend.routes.reports import bp as reports_bp
 from backend.routes.scraper_api import bp as scraper_bp
 
@@ -41,6 +42,7 @@ def create_app():
     app.register_blueprint(reports_bp)
     app.register_blueprint(documents_bp)
     app.register_blueprint(extraction_bp)
+    app.register_blueprint(financials_bp)
     app.register_blueprint(scraper_bp)
 
     # Serve the built frontend (prod container). In dev the Vite server owns

@@ -21,6 +21,19 @@ options:
   machineType: E2_HIGHCPU_8
 EOF
 
+# The financials feature's optional LLM fallback (Google AI Studio / Gemini)
+# reads LLM_API_KEY. Pass it through only when set in the deploying shell, so the
+# free-tier key never lives in the repo. Deterministic parsing works without it.
+# GEMINI_MODEL is optional (defaults to gemini-2.0-flash in code).
+SERVE_ENV="$DATA_ENV,EXTRACT_WORKERS=2"
+if [ -n "${LLM_API_KEY:-}" ]; then
+    SERVE_ENV="$SERVE_ENV,LLM_API_KEY=${LLM_API_KEY}"
+    [ -n "${GEMINI_MODEL:-}" ] && SERVE_ENV="$SERVE_ENV,GEMINI_MODEL=${GEMINI_MODEL}"
+    echo ">> LLM_API_KEY detected — financials AI fallback will be enabled."
+else
+    echo ">> LLM_API_KEY not set — deploying with deterministic financials only."
+fi
+
 echo ">> Deploying service '$SERVE_SERVICE' to $REGION (scale-to-zero, bucket mount)…"
 gcloud run deploy "$SERVE_SERVICE" \
     --image "$SERVE_IMAGE" \
@@ -31,7 +44,7 @@ gcloud run deploy "$SERVE_SERVICE" \
     --concurrency 8 --timeout 300 \
     --add-volume=name=data,type=cloud-storage,bucket="$BUCKET" \
     --add-volume-mount=volume=data,mount-path=/data \
-    --set-env-vars="$DATA_ENV,EXTRACT_WORKERS=2" \
+    --set-env-vars="$SERVE_ENV" \
     --allow-unauthenticated
 
 echo

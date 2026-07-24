@@ -5,6 +5,7 @@ Document identity is the SHA-256 of the file bytes, formatted "sha256:<hex>",
 so the same file under two names hits the same cache entry.
 """
 import csv
+import datetime
 import hashlib
 import os
 import re
@@ -15,6 +16,11 @@ from backend.config import (DB_PATH, METADATA_CSV, SQLITE_JOURNAL, get_logger,
                             resolve_corpus_path)
 
 log = get_logger(__name__)
+
+
+def utcnow() -> str:
+    """UTC timestamp in the same ISO-Z format used across the app."""
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def get_db(db_path=None):
@@ -89,6 +95,17 @@ SCHEMA = """
         headers,
         cells
     );
+
+    -- Derived company financials, one row per document (re-derive overwrites).
+    CREATE TABLE IF NOT EXISTS financials (
+        document_id     TEXT PRIMARY KEY
+                        REFERENCES documents(document_id) ON DELETE CASCADE,
+        generated_at    TEXT NOT NULL,
+        method          TEXT NOT NULL,   -- deterministic | hybrid | llm
+        scale           TEXT,            -- Thousands | Millions | …
+        periods_json    TEXT NOT NULL,
+        financials_json TEXT NOT NULL
+    );
 """
 
 
@@ -123,6 +140,9 @@ def delete_extractions(conn, document_ids: list) -> int:
         cur = conn.execute("DELETE FROM extractions WHERE document_id = ?", (doc_id,))
         deleted += cur.rowcount
         conn.execute("DELETE FROM table_search WHERE document_id = ?", (doc_id,))
+        # Derived financials are downstream of the extraction — drop them too so
+        # a re-extract doesn't leave stale figures behind.
+        conn.execute("DELETE FROM financials WHERE document_id = ?", (doc_id,))
     return deleted
 
 
